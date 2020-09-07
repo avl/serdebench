@@ -1,6 +1,11 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use serde::{Serialize, Deserialize};
 use abomonation_derive::Abomonation;
+use std::io::Cursor;
+
+extern crate savefile;
+#[macro_use]
+extern crate savefile_derive;
 
 #[allow(dead_code, unused_imports)]
 #[path = "../storeddata_generated.rs"]
@@ -10,7 +15,7 @@ mod flat;
 #[path = "../storeddata_capnp.rs"]
 mod storeddata_capnp;
 
-#[derive(Abomonation, Serialize, Deserialize)]
+#[derive(Savefile, Abomonation, Serialize, Deserialize)]
 pub enum StoredVariants {
     YesNo(bool),
     Small(u8),
@@ -18,13 +23,14 @@ pub enum StoredVariants {
     Stringy(String),
 }
 
-#[derive(Abomonation, Serialize, Deserialize)]
+#[derive(Savefile, Abomonation, Serialize, Deserialize)]
 pub struct StoredData {
     pub variant: StoredVariants,
     pub opt_bool: Option<bool>,
     pub vec_strs: Vec<String>,
     pub range: std::ops::Range<usize>,
 }
+
 
 fn compare_serde(c: &mut Criterion) {
     let mut group = c.benchmark_group("ser");
@@ -35,6 +41,7 @@ fn compare_serde(c: &mut Criterion) {
         range: 0..7878,
     };
     let mut buffer = Vec::with_capacity(4096);
+
     group.bench_function("sr.json", |b| b.iter(|| {
         black_box(&mut buffer).clear();
         serde_json::to_writer(black_box(&mut buffer), black_box(&value))
@@ -210,6 +217,14 @@ fn compare_serde(c: &mut Criterion) {
             vec_strs,
             range: (range.get_start() as usize)..(range.get_end() as usize),
         }
+    }));
+    group.bench_function("sr.savefile", |b| b.iter(|| {
+        black_box(&mut buffer).clear();
+        savefile::save_noschema(black_box(&mut buffer), 0, black_box(&value))
+    }));
+    println!("savefile: {} bytes", buffer.len());
+    group.bench_function("de.savefile", |b| b.iter(|| {
+        savefile::load_noschema::<StoredVariants>(&mut Cursor::new(&buffer), 0)
     }));
     group.bench_function("sr.abomonation", |b| b.iter(|| {
         black_box(&mut buffer).clear();
